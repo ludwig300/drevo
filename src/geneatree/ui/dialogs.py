@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from PySide6.QtCore import QDate, Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
@@ -26,6 +28,7 @@ from geneatree.model.entities import Person, Relationship, new_id
 from geneatree.scene.export_pdf import PdfExportOptions
 
 DATE_FORMAT = "dd.MM.yyyy"
+YEAR_PATTERN = re.compile(r"^\d{4}$")
 
 
 def short_name_from_full_name(full_name: str) -> str:
@@ -133,8 +136,7 @@ class PersonDialog(QDialog):
 
     def _build_date_field(self, title: str) -> tuple[QLineEdit, QWidget]:
         edit = QLineEdit()
-        edit.setInputMask("00.00.0000;_")
-        edit.setPlaceholderText("дд.мм.гггг")
+        edit.setPlaceholderText("дд.мм.гггг, yyyy-mm-dd или yyyy")
         edit.setClearButtonEnabled(True)
 
         calendar_btn = QPushButton("Календарь")
@@ -173,19 +175,36 @@ class PersonDialog(QDialog):
 
     @staticmethod
     def _parse_date_text(value: str) -> QDate | None:
-        text = value.strip().replace("_", "")
+        text = PersonDialog._normalized_raw_date(value)
         if not text:
             return None
-        for fmt in (DATE_FORMAT, "yyyy-MM-dd"):
+        for fmt in (DATE_FORMAT, "yyyy-MM-dd", "yyyy"):
             parsed = QDate.fromString(text, fmt)
             if parsed.isValid():
                 return parsed
         return None
 
-    def _normalized_date_text(self, value: str) -> str:
-        parsed = self._parse_date_text(value)
-        if not parsed:
+    @staticmethod
+    def _normalized_raw_date(value: str) -> str:
+        text = value.strip().replace("_", "")
+        if not any(ch.isdigit() for ch in text):
             return ""
+        return text
+
+    @staticmethod
+    def _is_year_text(value: str) -> bool:
+        return bool(YEAR_PATTERN.fullmatch(value))
+
+    def _normalized_date_text(self, value: str) -> str:
+        text = self._normalized_raw_date(value)
+        if not text:
+            return ""
+        if self._is_year_text(text):
+            return text
+
+        parsed = self._parse_date_text(text)
+        if not parsed:
+            return text
         return parsed.toString(DATE_FORMAT)
 
     def _pick_photo(self) -> None:
@@ -269,19 +288,27 @@ class PersonDialog(QDialog):
             ("Дата рождения", self.birth_date_edit),
             ("Дата смерти", self.death_date_edit),
         ):
-            parsed = self._parse_date_text(edit.text())
-            if parsed is None:
-                raw = edit.text().strip().replace("_", "")
-                if raw:
-                    QMessageBox.warning(
-                        self,
-                        "Проверка данных",
-                        f"{field_name} должна быть в формате дд.мм.гггг.",
-                    )
-                    return
+            raw = self._normalized_raw_date(edit.text())
+            if not raw:
                 edit.clear()
                 continue
-            edit.setText(parsed.toString(DATE_FORMAT))
+
+            parsed = self._parse_date_text(raw)
+            if parsed is None:
+                QMessageBox.warning(
+                    self,
+                    "Проверка данных",
+                    (
+                        f"{field_name} должна быть в формате дд.мм.гггг, yyyy-mm-dd "
+                        "или yyyy."
+                    ),
+                )
+                return
+
+            if self._is_year_text(raw):
+                edit.setText(raw)
+            else:
+                edit.setText(parsed.toString(DATE_FORMAT))
 
         self.accept()
 

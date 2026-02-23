@@ -151,8 +151,14 @@ class PersonItem(QGraphicsObject):
         painter.setFont(subtitle_font)
         painter.setPen(QColor("#475569"))
         life_range = ""
-        if self.person.birth_date or self.person.death_date:
-            life_range = f"{self.person.birth_date or '?'} - {self.person.death_date or ''}".strip()
+        birth = (self.person.birth_date or "").strip()
+        death = (self.person.death_date or "").strip()
+        if birth and death:
+            life_range = f"{birth} - {death}"
+        elif birth:
+            life_range = birth
+        elif death:
+            life_range = death
         full_name = self.person.full_name or ""
         line_1 = full_name if full_name else life_range
         line_2 = life_range if full_name else ""
